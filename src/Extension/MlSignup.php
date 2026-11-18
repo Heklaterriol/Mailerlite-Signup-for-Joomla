@@ -203,7 +203,8 @@ final class MlSignup extends CMSPlugin implements SubscriberInterface
         }
 
         if ($code === 422) {
-            $this->respond(['success' => false, 'message' => Text::_('PLG_SYSTEM_MLSIGNUP_ERR_EMAIL')], 422);
+            // MailerLite refused the address (details are in the log).
+            $this->respond(['success' => false, 'message' => Text::_('PLG_SYSTEM_MLSIGNUP_ERR_REJECTED')], 422);
         }
 
         $this->respond(['success' => false, 'message' => Text::_('PLG_SYSTEM_MLSIGNUP_ERR_GENERIC')], 502);
@@ -320,7 +321,20 @@ final class MlSignup extends CMSPlugin implements SubscriberInterface
         if ($code !== 200 && $code !== 201) {
             $body = json_decode((string) $response->getBody(), true);
             $msg  = \is_array($body) && isset($body['message']) && \is_string($body['message']) ? mb_substr($body['message'], 0, 200) : '';
-            $this->log('MailerLite responded with HTTP ' . $code . ($msg !== '' ? ': ' . $msg : ''));
+
+            // Validation errors (HTTP 422) carry the actual reason in "errors", e.g. {"email": ["..."]}.
+            $details = [];
+
+            if (\is_array($body) && isset($body['errors']) && \is_array($body['errors'])) {
+                foreach ($body['errors'] as $field => $messages) {
+                    $details[] = $field . ': ' . implode(' ', array_map('strval', array_filter((array) $messages, 'is_scalar')));
+                }
+            }
+
+            $this->log(
+                'MailerLite responded with HTTP ' . $code . ($msg !== '' ? ': ' . $msg : '')
+                . ($details !== [] ? ' [' . mb_substr(implode('; ', $details), 0, 500) . ']' : '')
+            );
         }
 
         return $code;

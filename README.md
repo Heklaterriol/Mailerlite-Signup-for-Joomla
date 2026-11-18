@@ -5,7 +5,7 @@ A Joomla system plugin that adds a newsletter signup form for [MailerLite](https
 The form posts to your own site. Your server then calls the MailerLite API with your API token. A visitor's browser only talks to your domain; MailerLite receives data only when someone actually submits the form.
 
 - **Plugin:** `plg_system_mlsignup` (element `mlsignup`, group `system`)
-- **Current version:** 1.0.5
+- **Current version:** 1.0.6
 - **License:** GNU General Public License version 2 or later
 
 ---
@@ -180,6 +180,8 @@ Notes:
 
 The folder gets an `index.html` and a `.htaccess` that denies web access. Expired files are removed automatically (about once per 20 signup requests).
 
+**Log:** the log file `mlsignup.php` can contain MailerLite's error text, which may include the e-mail address in question. Keep the log folder protected and clean it up from time to time.
+
 **Consent text:** the checkbox text is in the language files and is based on a typical double opt-in wording. This is not legal advice. Have the text and your privacy policy checked for your situation.
 
 ---
@@ -216,7 +218,8 @@ Errors from the MailerLite API are written to the Joomla log folder (see **Syste
 | Same message, no log entry | The API token field is empty, or the request fails before reaching the plugin. Check the browser's network tab (F12): both requests to `index.php` should return JSON. |
 | "Already subscribed" message never appears | The setting is off, or the lookup fails. Look for `MailerLite lookup` entries in the log. Note that only active subscribers are reported; unconfirmed or unsubscribed addresses go through the normal flow. |
 | Same message, log shows `MailerLite request failed` | The server cannot reach `connect.mailerlite.com`. Check cURL/streams and firewall rules. |
-| "Please enter a valid email address" for a valid address | MailerLite answered with HTTP 422. Often a wrong group ID. Check the log. |
+| "This email address cannot be subscribed" | MailerLite answered with HTTP 422 and refused the address. The log entry contains the reason from MailerLite in square brackets, e.g. `[email: …]`. Typical causes: the address is unsubscribed, bounced or on the suppression list, the domain is not accepted, or the group ID is wrong. |
+| "Please enter a valid email address" | The plugin itself rejected the address (format check). |
 | "Too many attempts" | One of the rate limits was reached. Wait, or raise the limit in the plugin settings. Behind a proxy all visitors share one IP. |
 | "The security check failed" | Challenge expired (page open for more than 10 minutes), reused, or the browser blocked `crypto.subtle` (not HTTPS). Reload the page. |
 | Page error `UnknownAssetException … plg_system_mlsignup.form` | Fixed in 1.0.1 (plugin assets are registered by the plugin). Update the plugin. |
@@ -257,6 +260,10 @@ Namespace: `MlSignup\Plugin\System\MlSignup`
 ---
 
 ## Changelog
+
+**1.0.6**
+- Validation details from MailerLite (`errors`) are written to the log
+- HTTP 422 from MailerLite shows its own message ("This email address cannot be subscribed") instead of "Please enter a valid email address"
 
 **1.0.5**
 - Optional message for addresses that are already subscribed (setting is off by default), plus a separate message when an active subscriber is only added to the group
