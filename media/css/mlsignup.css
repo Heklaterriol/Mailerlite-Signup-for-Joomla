@@ -1,0 +1,22 @@
+.mlsignup { max-width: 32rem; }
+.mlsignup [hidden] { display: none !important; }
+.mlsignup__field { margin: 0 0 .75rem; }
+.mlsignup__field label { display: block; font-weight: 600; margin-bottom: .25rem; }
+.mlsignup__field input[type="email"],
+.mlsignup__field input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: .6rem .75rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font: inherit;
+}
+.mlsignup__consent { display: flex; gap: .5rem; align-items: flex-start; font-size: .9rem; margin: 0 0 .75rem; }
+.mlsignup__consent input { margin-top: .25rem; flex: none; }
+.mlsignup__hint { font-size: .85rem; opacity: .8; margin: 0 0 .75rem; }
+.mlsignup__hp { position: absolute !important; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.mlsignup__button { padding: .6rem 1.25rem; font: inherit; font-weight: 600; cursor: pointer; }
+.mlsignup__button[disabled] { opacity: .6; cursor: wait; }
+.mlsignup__status { margin-top: .75rem; }
+.mlsignup__status[data-state="error"] { color: #b00020; }
+.mlsignup__status[data-state="ok"] { color: #1b5e20; font-weight: 600; }
