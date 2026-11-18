@@ -186,7 +186,9 @@ final class MlSignup extends CMSPlugin implements SubscriberInterface
 
         // Limit per e-mail address (stored only as an HMAC): stops confirmation-mail flooding of one
         // address from many IPs. Answer is the normal success message, nothing is sent.
-        if ($this->hit('e_' . $this->hashId(mb_strtolower($email)), self::EMAIL_LIMIT, self::EMAIL_WINDOW)) {
+        $emailKey = 'e_' . $this->hashId(mb_strtolower($email));
+
+        if ($this->hit($emailKey, self::EMAIL_LIMIT, self::EMAIL_WINDOW)) {
             $this->respond(['success' => true, 'message' => Text::_('PLG_SYSTEM_MLSIGNUP_SUCCESS')]);
         }
 
@@ -201,6 +203,10 @@ final class MlSignup extends CMSPlugin implements SubscriberInterface
                 'message' => Text::_($existing === 'added' ? 'PLG_SYSTEM_MLSIGNUP_ADDED' : 'PLG_SYSTEM_MLSIGNUP_SUCCESS'),
             ]);
         }
+
+        // Nothing was sent: give the attempt back, so a temporary MailerLite problem does not use up
+        // the quota of the address (otherwise the visitor would later get a success message without a mail).
+        $this->unhit($emailKey, self::EMAIL_WINDOW);
 
         if ($code === 422) {
             // MailerLite refused the address (details are in the log).
@@ -477,6 +483,36 @@ final class MlSignup extends CMSPlugin implements SubscriberInterface
         fclose($handle);
 
         return $exceeded;
+    }
+
+    /**
+     * Takes back one hit counted by hit(), under the same lock. Does nothing if the counter does not
+     * exist, is already zero or belongs to an expired window.
+     */
+    private function unhit(string $name, int $window): void
+    {
+        $handle = @fopen($this->storage() . '/' . $name, 'r+');
+
+        if ($handle === false) {
+            return;
+        }
+
+        if (flock($handle, LOCK_EX)) {
+            $data = json_decode((string) stream_get_contents($handle), true);
+
+            if (\is_array($data) && isset($data['t'], $data['n']) && (time() - (int) $data['t']) < $window && (int) $data['n'] > 0) {
+                $data['n'] = (int) $data['n'] - 1;
+
+                if (ftruncate($handle, 0) && rewind($handle)) {
+                    fwrite($handle, (string) json_encode($data));
+                    fflush($handle);
+                }
+            }
+
+            flock($handle, LOCK_UN);
+        }
+
+        fclose($handle);
     }
 
     /**

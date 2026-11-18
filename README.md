@@ -5,7 +5,7 @@ A Joomla system plugin that adds a newsletter signup form for [MailerLite](https
 The form posts to your own site. Your server then calls the MailerLite API with your API token. A visitor's browser only talks to your domain; MailerLite receives data only when someone actually submits the form.
 
 - **Plugin:** `plg_system_mlsignup` (element `mlsignup`, group `system`)
-- **Current version:** 1.0.6
+- **Current version:** 1.0.7
 - **License:** GNU General Public License version 2 or later
 
 ---
@@ -123,7 +123,7 @@ You can use the shortcode more than once per page. Each form gets its own field 
 5. Signup limit per IP.
 6. Optional (setting on): look the address up at MailerLite. Already subscribed? Show the "already subscribed" message and stop (this does not count towards the per-address limit).
 7. Limit per e-mail address. If exceeded, the normal success message is shown but nothing is sent.
-8. MailerLite API call.
+8. MailerLite API call. If it fails, the attempt counted in step 7 is given back, so a temporary MailerLite problem does not use up the address's quota.
 
 ### Message for addresses that are already subscribed
 
@@ -153,7 +153,7 @@ Privacy trade-off: with this setting on, anyone who passes the spam protection c
 | Max. payload size | 2048 characters before decoding |
 | Attempts per IP | 4 × the signup limit per hour (default 20) |
 | Signups per IP | Setting "Signups per IP and hour" (default 5) |
-| Signups per e-mail address | 3 per 24 hours |
+| Signups per e-mail address | 3 per 24 hours (an attempt is given back if the MailerLite call fails) |
 | Storage failure | Fail closed: the request is refused |
 
 Notes:
@@ -179,6 +179,12 @@ Notes:
 | `e_…` | Counter for an e-mail address (HMAC with your Joomla secret) | up to about 24 hours |
 
 The folder gets an `index.html` and a `.htaccess` that denies web access. Expired files are removed automatically (about once per 20 signup requests).
+
+The `.htaccess` only works on Apache. On nginx it is ignored and the files could be requested directly by name. They contain nothing sensitive (empty markers, HMAC hashes and counters), but if you want to block access anyway, add this to your server configuration (adjust the path to your Joomla cache folder):
+
+```nginx
+location ^~ /cache/plg_system_mlsignup/ { deny all; }
+```
 
 **Log:** the log file `mlsignup.php` can contain MailerLite's error text, which may include the e-mail address in question. Keep the log folder protected and clean it up from time to time.
 
@@ -260,6 +266,10 @@ Namespace: `MlSignup\Plugin\System\MlSignup`
 ---
 
 ## Changelog
+
+**1.0.7**
+- The per-address counter is given back when the MailerLite call fails (before, three failed attempts during a MailerLite outage led to a success message without any e-mail being sent)
+- README: note that `.htaccess` protection is Apache-only, with an nginx example
 
 **1.0.6**
 - Validation details from MailerLite (`errors`) are written to the log
