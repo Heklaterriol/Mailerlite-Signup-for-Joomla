@@ -177,6 +177,13 @@ final class MlSignup extends CMSPlugin implements SubscriberInterface
             $this->respond(['success' => false, 'message' => Text::_('PLG_SYSTEM_MLSIGNUP_ERR_RATE')], 429);
         }
 
+        // Optional: tell people who are already subscribed (see plugin setting "show_existing").
+        $existing = $this->checkExisting($email);
+
+        if ($existing === 'already') {
+            $this->respond(['success' => true, 'message' => Text::_('PLG_SYSTEM_MLSIGNUP_ALREADY')]);
+        }
+
         // Limit per e-mail address (stored only as an HMAC): stops confirmation-mail flooding of one
         // address from many IPs. Answer is the normal success message, nothing is sent.
         if ($this->hit('e_' . $this->hashId(mb_strtolower($email)), self::EMAIL_LIMIT, self::EMAIL_WINDOW)) {
@@ -186,8 +193,13 @@ final class MlSignup extends CMSPlugin implements SubscriberInterface
         $code = $this->callMailerLite($email, $name);
 
         if ($code === 200 || $code === 201) {
-            // Same message for new and existing subscribers (no account enumeration).
-            $this->respond(['success' => true, 'message' => Text::_('PLG_SYSTEM_MLSIGNUP_SUCCESS')]);
+            // Without the optional lookup the message is the same for new and existing subscribers
+            // (no account enumeration). An already active subscriber who only got added to the
+            // group has no confirmation e-mail coming, so the text must not promise one.
+            $this->respond([
+                'success' => true,
+                'message' => Text::_($existing === 'added' ? 'PLG_SYSTEM_MLSIGNUP_ADDED' : 'PLG_SYSTEM_MLSIGNUP_SUCCESS'),
+            ]);
         }
 
         if ($code === 422) {
@@ -195,6 +207,85 @@ final class MlSignup extends CMSPlugin implements SubscriberInterface
         }
 
         $this->respond(['success' => false, 'message' => Text::_('PLG_SYSTEM_MLSIGNUP_ERR_GENERIC')], 502);
+    }
+
+    private function groupId(): string
+    {
+        $groupId = trim((string) $this->params->get('group_id', ''));
+
+        return $groupId === '0' ? '' : $groupId;
+    }
+
+    private function apiHeaders(): array
+    {
+        return [
+            'Authorization' => 'Bearer ' . trim((string) $this->params->get('api_key', '')),
+            'Accept'        => 'application/json',
+        ];
+    }
+
+    /**
+     * Only used when the setting "show_existing" is on.
+     *
+     * @return string 'already' = active subscriber (and in the configured group, if any),
+     *                'added'   = active subscriber who is not yet in the configured group,
+     *                ''        = new, not active, unknown or lookup failed: continue as usual.
+     */
+    private function checkExisting(string $email): string
+    {
+        if (!(int) $this->params->get('show_existing', 0)) {
+            return '';
+        }
+
+        $subscriber = $this->lookupSubscriber($email);
+
+        if ($subscriber === null || $subscriber['status'] !== 'active') {
+            return '';
+        }
+
+        $groupId = $this->groupId();
+
+        return ($groupId === '' || \in_array($groupId, $subscriber['groups'], true)) ? 'already' : 'added';
+    }
+
+    /** @return array{status: string, groups: string[]}|null null if not found or the lookup failed */
+    private function lookupSubscriber(string $email): ?array
+    {
+        try {
+            $response = HttpFactory::getHttp()->get(self::API_URL . '/' . rawurlencode($email), $this->apiHeaders(), 10);
+            $code     = (int) $response->getStatusCode();
+        } catch (\Throwable $e) {
+            $this->log('MailerLite lookup failed: ' . $e::class);
+
+            return null;
+        }
+
+        if ($code === 404) {
+            return null;
+        }
+
+        if ($code !== 200) {
+            $this->log('MailerLite lookup responded with HTTP ' . $code);
+
+            return null;
+        }
+
+        $body = json_decode((string) $response->getBody(), true);
+        $data = \is_array($body) && isset($body['data']) && \is_array($body['data']) ? $body['data'] : null;
+
+        if ($data === null) {
+            return null;
+        }
+
+        $groups = [];
+
+        foreach ((array) ($data['groups'] ?? []) as $group) {
+            if (\is_array($group) && isset($group['id'])) {
+                $groups[] = (string) $group['id'];
+            }
+        }
+
+        return ['status' => (string) ($data['status'] ?? ''), 'groups' => $groups];
     }
 
     private function callMailerLite(string $email, string $name): int
@@ -205,9 +296,9 @@ final class MlSignup extends CMSPlugin implements SubscriberInterface
             $payload['fields'] = ['name' => $name];
         }
 
-        $groupId = trim((string) $this->params->get('group_id', ''));
+        $groupId = $this->groupId();
 
-        if ($groupId !== '' && $groupId !== '0') {
+        if ($groupId !== '') {
             $payload['groups'] = [$groupId];
         }
 
@@ -215,11 +306,7 @@ final class MlSignup extends CMSPlugin implements SubscriberInterface
             $response = HttpFactory::getHttp()->post(
                 self::API_URL,
                 json_encode($payload, JSON_UNESCAPED_UNICODE),
-                [
-                    'Authorization' => 'Bearer ' . trim((string) $this->params->get('api_key', '')),
-                    'Content-Type'  => 'application/json',
-                    'Accept'        => 'application/json',
-                ],
+                $this->apiHeaders() + ['Content-Type' => 'application/json'],
                 10
             );
 

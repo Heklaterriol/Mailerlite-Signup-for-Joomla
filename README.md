@@ -5,7 +5,7 @@ A Joomla system plugin that adds a newsletter signup form for [MailerLite](https
 The form posts to your own site. Your server then calls the MailerLite API with your API token. A visitor's browser only talks to your domain; MailerLite receives data only when someone actually submits the form.
 
 - **Plugin:** `plg_system_mlsignup` (element `mlsignup`, group `system`)
-- **Current version:** 1.0.4
+- **Current version:** 1.0.5
 - **License:** GNU General Public License version 2 or later
 
 ---
@@ -21,7 +21,7 @@ The form posts to your own site. Your server then calls the MailerLite API with 
   - rate limit per IP, a looser limit on all attempts per IP, and a limit per e-mail address
 - Works with Joomla's page cache (no CSRF token is embedded in the cached HTML).
 - Consent checkbox with a link to your privacy policy; double opt-in handled by MailerLite.
-- Generic success message for new and existing subscribers (no account enumeration).
+- By default the same neutral success message is shown for new and existing subscribers (no account enumeration). Optionally the form can tell people that their address is already subscribed.
 - Translations: German (de-DE) and English (en-GB).
 - Layout can be overridden in your template.
 
@@ -86,6 +86,7 @@ Each group is listed with its `id` and `name`. Enter the ID in the plugin settin
 | **Group ID (optional)** | New subscribers are added to this group. |
 | **Privacy policy URL** | Linked in the consent checkbox. Joomla's URL filter removes unsafe schemes such as `javascript:` when saving. |
 | **Show name field** | Show or hide the optional name field. |
+| **Message for addresses that are already subscribed** | Off (default): always the same neutral success message. On: the plugin asks MailerLite whether the address already exists and shows a dedicated message (see below). Note that this lets anyone check from outside whether an address is on your list. |
 | **Signups per IP and hour** | Strict limit before the MailerLite call. Default: 5. |
 
 ---
@@ -120,8 +121,24 @@ You can use the shortcode more than once per page. Each form gets its own field 
 3. Attempt limit per IP (see table below).
 4. Challenge valid? (Format, size, expiry, signature, hash, single use.)
 5. Signup limit per IP.
-6. Limit per e-mail address. If exceeded, the normal success message is shown but nothing is sent.
-7. MailerLite API call.
+6. Optional (setting on): look the address up at MailerLite. Already subscribed? Show the "already subscribed" message and stop (this does not count towards the per-address limit).
+7. Limit per e-mail address. If exceeded, the normal success message is shown but nothing is sent.
+8. MailerLite API call.
+
+### Message for addresses that are already subscribed
+
+With the setting **Message for addresses that are already subscribed** switched on, the plugin calls `GET https://connect.mailerlite.com/api/subscribers/{email}` before adding the address:
+
+| MailerLite says | What the visitor sees |
+|---|---|
+| Subscriber is active and (no group configured, or already in the configured group) | "This email address is already subscribed to the newsletter." Nothing is sent to MailerLite. |
+| Subscriber is active but not yet in the configured group | The address is added to the group and the visitor sees "You are now subscribed to the newsletter." No confirmation e-mail follows, because the address is already confirmed. |
+| Not found, unconfirmed, unsubscribed, bounced or junk | Normal flow with the usual "check your inbox" message. |
+| Lookup fails (network error, unexpected answer) | Normal flow; the error is logged. |
+
+Both messages can be changed with language overrides (`PLG_SYSTEM_MLSIGNUP_ALREADY`, `PLG_SYSTEM_MLSIGNUP_ADDED`).
+
+Privacy trade-off: with this setting on, anyone who passes the spam protection can find out whether a specific address is subscribed. The IP limits slow this down but do not prevent it. Keep the setting off if that matters to you.
 
 ---
 
@@ -151,7 +168,7 @@ Notes:
 
 **On your site's visitors:** the page makes no requests to MailerLite or any other third party. The signup form itself only contacts your own domain.
 
-**On submit:** the e-mail address and the optional name are sent from your server to MailerLite. Sign a data processing agreement (DPA) with MailerLite and mention the service in your privacy policy.
+**On submit:** the e-mail address and the optional name are sent from your server to MailerLite. With the optional "already subscribed" message the address is additionally sent in a lookup request before that. Sign a data processing agreement (DPA) with MailerLite and mention the service in your privacy policy.
 
 **Stored locally** in `cache/plg_system_mlsignup/` (only hashes, no readable personal data):
 
@@ -197,6 +214,7 @@ Errors from the MailerLite API are written to the Joomla log folder (see **Syste
 |---|---|
 | "Signing up is currently not possible" and log shows `HTTP 401` | Token is wrong, revoked or truncated. Paste it again completely (the field accepts up to 4000 characters), or create a new one. |
 | Same message, no log entry | The API token field is empty, or the request fails before reaching the plugin. Check the browser's network tab (F12): both requests to `index.php` should return JSON. |
+| "Already subscribed" message never appears | The setting is off, or the lookup fails. Look for `MailerLite lookup` entries in the log. Note that only active subscribers are reported; unconfirmed or unsubscribed addresses go through the normal flow. |
 | Same message, log shows `MailerLite request failed` | The server cannot reach `connect.mailerlite.com`. Check cURL/streams and firewall rules. |
 | "Please enter a valid email address" for a valid address | MailerLite answered with HTTP 422. Often a wrong group ID. Check the log. |
 | "Too many attempts" | One of the rate limits was reached. Wait, or raise the limit in the plugin settings. Behind a proxy all visitors share one IP. |
@@ -239,6 +257,9 @@ Namespace: `MlSignup\Plugin\System\MlSignup`
 ---
 
 ## Changelog
+
+**1.0.5**
+- Optional message for addresses that are already subscribed (setting is off by default), plus a separate message when an active subscriber is only added to the group
 
 **1.0.4**
 - Consent checkbox is now hidden together with the rest of the form after a successful signup (CSS `display: flex` overrode the `hidden` attribute)
