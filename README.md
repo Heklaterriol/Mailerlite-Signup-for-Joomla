@@ -42,7 +42,9 @@ The form posts to your own site. Your server then calls the MailerLite API with 
 3. Open the plugin and fill in the settings (see below). Save.
 4. Put `{mlsignup}` where the form should appear.
 
-Updating: install the new ZIP over the existing one. Your settings are kept.
+Updating: Joomla checks for new versions itself. The plugin registers an update site (`update_plg_mlsignup.xml` in this repository), so new releases appear under **System → Update → Extensions**. You can also install a new ZIP over the existing one by hand. Your settings are kept either way.
+
+The update site is registered when a version that contains it is installed. If you installed the plugin before that, install the current ZIP once manually.
 
 If you previously used the MailerLite universal script or an embedded form, remove it. This plugin does not need it.
 
@@ -192,6 +194,27 @@ location ^~ /cache/plg_system_mlsignup/ { deny all; }
 
 ---
 
+## Releasing a new version (maintainers)
+
+1. Raise the version in `mlsignup.xml` and in `media/joomla.asset.json`, and add a changelog entry to this file.
+2. Build the ZIP with the files at its root (`mlsignup.xml` at the top level, not inside a folder) and name it `plg_system_mlsignup_X.Y.Z.zip`.
+3. Create a GitHub release with the tag used in the download URL and upload exactly this file. Do not re-create the ZIP afterwards, because the hashes depend on the exact bytes.
+4. Calculate the hashes and put them into `update_plg_mlsignup.xml` together with the new version, the download URL and the date:
+
+   ```bash
+   sha256sum plg_system_mlsignup_X.Y.Z.zip
+   sha384sum plg_system_mlsignup_X.Y.Z.zip
+   sha512sum plg_system_mlsignup_X.Y.Z.zip
+   ```
+
+5. Commit `update_plg_mlsignup.xml` to the `main` branch. The plugin reads it from
+   `https://raw.githubusercontent.com/Heklaterriol/Mailerlite-Signup-for-Joomla/main/update_plg_mlsignup.xml`.
+   (The normal GitHub page URL does not work, it must be the `raw` URL.)
+
+Notes on `update_plg_mlsignup.xml`: for plugins the `<element>` is the plain element name (`mlsignup`) and `<folder>system</folder>` is required.
+
+---
+
 ## Customization
 
 ### Layout
@@ -239,7 +262,7 @@ Errors from the MailerLite API are written to the Joomla log folder (see **Syste
 
 ```
 plg_system_mlsignup/
-├── mlsignup.xml                 Manifest and plugin parameters
+├── mlsignup.xml                 Manifest, plugin parameters and update server
 ├── services/provider.php        Joomla service provider
 ├── src/Extension/MlSignup.php   Plugin class (form, endpoint, challenge, limits, API call)
 ├── tmpl/default.php             Form layout
@@ -253,6 +276,8 @@ plg_system_mlsignup/
 ```
 
 Namespace: `MlSignup\Plugin\System\MlSignup`
+
+Not part of the ZIP, but in the repository root: `update_plg_mlsignup.xml` (update server file) and `README.md`.
 
 ---
 
@@ -268,6 +293,7 @@ Namespace: `MlSignup\Plugin\System\MlSignup`
 ## Changelog
 
 **1.0.7**
+- Joomla update server (`updateservers` in the manifest, `update_plg_mlsignup.xml` in the repository)
 - The per-address counter is given back when the MailerLite call fails (before, three failed attempts during a MailerLite outage led to a success message without any e-mail being sent)
 - README: note that `.htaccess` protection is Apache-only, with an nginx example
 
